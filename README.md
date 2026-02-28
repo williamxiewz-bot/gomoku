@@ -9,15 +9,9 @@
 - 悔棋 / 重新开始
 - 自动胜负判定
 
-## 部署
+## 访问
 
-### GitHub Pages
-https://williamxiewz-bot.github.io/gomoku/
-
-### 本地运行
-```bash
-python3 -m http.server 8080
-```
+🔗 https://williamxiewz-bot.github.io/gomoku/
 
 ## 技术
 
