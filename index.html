@@ -215,7 +215,7 @@
     <h1>五子棋</h1>
     <div class="status">
         当前执子: <span id="currentPlayer" class="current-piece black"></span>
-        <span id="playerText">黑方</span>
+        <span id="playerText">玩家(黑方)</span>
     </div>
     <div class="board" id="board"></div>
     <div class="controls">
@@ -276,7 +276,7 @@
         }
 
         function handleClick(row, col) {
-            if (gameOver || board[row][col] !== 0) return;
+            if (gameOver || board[row][col] !== 0 || currentPlayer !== 1) return;
             
             history.push({ row, col, player: currentPlayer });
             board[row][col] = currentPlayer;
@@ -288,9 +288,11 @@
                 return;
             }
             
-            currentPlayer = currentPlayer === 1 ? 2 : 1;
+            currentPlayer = 2;
             updateStatus();
             renderBoard();
+            
+            setTimeout(aiMove, 300);
         }
 
         function checkWin(row, col) {
@@ -320,13 +322,178 @@
             return false;
         }
 
+        function aiMove() {
+            if (gameOver) return;
+
+            const bestMove = findBestMove();
+            if (bestMove) {
+                history.push({ row: bestMove.row, col: bestMove.col, player: 2 });
+                board[bestMove.row][bestMove.col] = 2;
+                
+                if (checkWin(bestMove.row, bestMove.col)) {
+                    gameOver = true;
+                    renderBoard();
+                    showWinner();
+                    return;
+                }
+                
+                currentPlayer = 1;
+                updateStatus();
+                renderBoard();
+            }
+        }
+
+        function findBestMove() {
+            let bestScore = -Infinity;
+            let bestMove = null;
+            const candidates = getCandidateMoves();
+
+            for (const {row, col} of candidates) {
+                const score = evaluatePosition(row, col);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMove = { row, col };
+                }
+            }
+
+            if (!bestMove) {
+                for (let i = 0; i < BOARD_SIZE; i++) {
+                    for (let j = 0; j < BOARD_SIZE; j++) {
+                        if (board[i][j] === 0) {
+                            return { row: i, col: j };
+                        }
+                    }
+                }
+            }
+
+            return bestMove;
+        }
+
+        function getCandidateMoves() {
+            const moves = [];
+            const checked = new Set();
+
+            for (let i = 0; i < BOARD_SIZE; i++) {
+                for (let j = 0; j < BOARD_SIZE; j++) {
+                    if (board[i][j] !== 0) {
+                        for (let di = -2; di <= 2; di++) {
+                            for (let dj = -2; dj <= 2; dj++) {
+                                const ni = i + di;
+                                const nj = j + dj;
+                                const key = `${ni},${nj}`;
+                                if (ni >= 0 && ni < BOARD_SIZE && nj >= 0 && nj < BOARD_SIZE && 
+                                    board[ni][nj] === 0 && !checked.has(key)) {
+                                    checked.add(key);
+                                    moves.push({ row: ni, col: nj, score: evaluatePosition(ni, nj) });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (moves.length === 0) {
+                const center = Math.floor(BOARD_SIZE / 2);
+                return [{ row: center, col: center }];
+            }
+
+            moves.sort((a, b) => b.score - a.score);
+            return moves.slice(0, 15);
+        }
+
+        function evaluatePosition(row, col) {
+            let score = 0;
+            
+            board[row][col] = 2;
+            score += evaluateDirections(row, col, 2) * 1.1;
+            score += evaluateDirections(row, col, 1);
+            board[row][col] = 0;
+
+            board[row][col] = 1;
+            score += evaluateDirections(row, col, 1) * 1.05;
+            board[row][col] = 0;
+
+            return score;
+        }
+
+        function evaluateDirections(row, col, player) {
+            const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
+            let totalScore = 0;
+
+            for (const [dr, dc] of directions) {
+                const count = countConsecutive(row, col, dr, dc, player);
+                const open = isOpenEnd(row, col, dr, dc, player);
+                totalScore += getPatternScore(count, open);
+            }
+
+            return totalScore;
+        }
+
+        function countConsecutive(row, col, dr, dc, player) {
+            let count = 1;
+
+            let r = row + dr;
+            let c = col + dc;
+            while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === player) {
+                count++;
+                r += dr;
+                c += dc;
+            }
+
+            r = row - dr;
+            c = col - dc;
+            while (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === player) {
+                count++;
+                r -= dr;
+                c -= dc;
+            }
+
+            return count;
+        }
+
+        function isOpenEnd(row, col, dr, dc, player) {
+            let openEnds = 0;
+
+            let r = row + dr;
+            let c = col + dc;
+            if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === 0) {
+                openEnds++;
+            }
+
+            r = row - dr;
+            c = col - dc;
+            if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE && board[r][c] === 0) {
+                openEnds++;
+            }
+
+            return openEnds;
+        }
+
+        function getPatternScore(count, openEnds) {
+            if (count >= 5) return 100000;
+            if (count === 4) {
+                if (openEnds === 2) return 10000;
+                if (openEnds === 1) return 1000;
+            }
+            if (count === 3) {
+                if (openEnds === 2) return 1000;
+                if (openEnds === 1) return 100;
+            }
+            if (count === 2) {
+                if (openEnds === 2) return 100;
+                if (openEnds === 1) return 10;
+            }
+            if (count === 1 && openEnds === 2) return 10;
+            return count;
+        }
+
         function showWinner() {
             const overlay = document.getElementById('winnerOverlay');
             const winnerPiece = document.getElementById('winnerPiece');
             const winnerText = document.getElementById('winnerText');
             
             winnerPiece.className = 'winner-piece ' + (currentPlayer === 1 ? 'black' : 'white');
-            winnerText.textContent = (currentPlayer === 1 ? '黑方' : '白方') + ' 获胜！';
+            winnerText.textContent = (currentPlayer === 1 ? '玩家' : 'AI') + ' 获胜！';
             overlay.classList.add('show');
         }
 
@@ -335,7 +502,7 @@
             const playerText = document.getElementById('playerText');
             
             currentPlayerEl.className = 'current-piece ' + (currentPlayer === 1 ? 'black' : 'white');
-            playerText.textContent = currentPlayer === 1 ? '黑方' : '白方';
+            playerText.textContent = currentPlayer === 1 ? '玩家(黑方)' : 'AI(白方)';
         }
 
         function restartGame() {
@@ -353,7 +520,13 @@
             
             const lastMove = history.pop();
             board[lastMove.row][lastMove.col] = 0;
-            currentPlayer = lastMove.player;
+            
+            if (history.length > 0 && currentPlayer === 1) {
+                const aiMove = history.pop();
+                board[aiMove.row][aiMove.col] = 0;
+            }
+            
+            currentPlayer = 1;
             gameOver = false;
             document.getElementById('winnerOverlay').classList.remove('show');
             updateStatus();
